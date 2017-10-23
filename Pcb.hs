@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE MonadFailDesugaring #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
@@ -17,6 +18,7 @@ module Pcb
     , SheetPath(..)
     , TstampPath(..)
     , RefDesig(..)
+    , PathTarget(..)
       -- * Nodes
     , Node(..)
       -- ** Vias
@@ -24,7 +26,7 @@ module Pcb
       -- ** Segments
     , Segment(..)
       -- ** Modules
-    , Module(..), moduleName, modulePosition, modulePath
+    , Module(..), moduleName, modulePosition, modulePath, moduleOthers
       -- * PCB
     , Pcb(..), pcbNodes
     , parsePcb
@@ -42,6 +44,10 @@ import SExpr
 import SExpr.Class
 import SExpr.Parse
 
+-- | What does a path refer to?
+data PathTarget = TargetSheet
+                | TargetModule
+
 newtype NetId = NetId Int
               deriving (Show, Eq, Ord, ToSExpr)
 
@@ -57,11 +63,12 @@ newtype ModuleName = ModuleName String
 newtype TStamp = TStamp String
                deriving (Show, Eq, Ord, ToSExpr)
 
-newtype SheetPath = SheetPath {getSheetPath :: String}
+newtype SheetPath (a :: PathTarget)
+    = SheetPath {getSheetPath :: String}
                   deriving (Show, Eq, Ord, ToSExpr, IsString)
 makeWrapped ''SheetPath
 
-newtype TstampPath = TstampPath {getTstampPath :: String}
+newtype TstampPath (a :: PathTarget) = TstampPath {getTstampPath :: String}
                   deriving (Show, Eq, Ord, ToSExpr)
 
 newtype LayerName = LayerName String
@@ -95,7 +102,7 @@ data Module = Module { _moduleName     :: ModuleName
                      , _moduleEditTime :: TStamp
                      , _moduleTStamp   :: TStamp
                      , _modulePosition :: (Scientific, Scientific, Scientific)
-                     , _modulePath     :: TstampPath
+                     , _modulePath     :: TstampPath 'TargetModule
                      , _moduleOthers   :: [SExpr]
                      }
             deriving (Show)

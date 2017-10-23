@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Netlist where
@@ -15,8 +16,8 @@ import SExpr.Parse
 import Pcb
 
 data Sheet = Sheet { sheetNum     :: Int
-                   , sheetName    :: SheetPath
-                   , sheetTstamps :: TstampPath
+                   , sheetName    :: SheetPath 'TargetSheet
+                   , sheetTstamps :: TstampPath 'TargetSheet
                    }
            deriving (Show)
 
@@ -32,9 +33,9 @@ sheets (Netlist netlist) =
         return [Sheet {..}]
 
 data Component = Component { compRef        :: RefDesig
-                           , compSheetPath  :: SheetPath
-                           , compTstampSheetPath :: TstampPath
-                           , compTstampPath :: TstampPath
+                           , compSheetPath  :: SheetPath 'TargetSheet
+                           , compTstampSheetPath :: TstampPath 'TargetSheet
+                           , compTstampPath :: TstampPath 'TargetModule
                            }
                deriving (Show)
 

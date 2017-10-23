@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 import Data.List (isPrefixOf, stripPrefix)
@@ -7,6 +8,7 @@ import Data.Monoid
 import Control.Lens
 import Data.Scientific
 import qualified Data.Map.Strict as M
+import Debug.Trace
 
 import Pcb
 import Netlist
@@ -14,10 +16,10 @@ import SExpr
 import SExpr.Parse
 import SExpr.Class
 
-template :: SheetPath
+template :: SheetPath 'TargetSheet
 template = SheetPath "/chanC/"
 
-clones :: [(SheetPath, (Scientific, Scientific))]
+clones :: [(SheetPath 'TargetSheet, (Scientific, Scientific))]
 clones =
     [ SheetPath "/chanA/" `offsetBy` (0, -10)
     , SheetPath "/chanB/" `offsetBy` (0, -20)
@@ -38,9 +40,9 @@ main = do
     --print $ Netlist.components netlist
 
     Right pcb <- parsePcbFromFile "../adc-pmod.kicad_pcb"
-    let modulesByPath :: M.Map TstampPath [Module]
-        modulesByPath = M.fromListWith (++)
-            [ (_modulePath m, [m])
+    let modulesByPath :: M.Map (TstampPath 'TargetModule) Module
+        modulesByPath = M.fromList
+            [ (_modulePath m, m)
             | Module' m <- _pcbNodes pcb
             ]
     --mapM_ print $ M.keys modulesByPath
@@ -56,37 +58,28 @@ main = do
     let cloneTstamps = map (fromMaybe (error "failed to find") . findSheetByName netlist . fst) clones
     print cloneTstamps
     let removeOlds = foldMap removeSheetModules cloneTstamps
-        addClone :: TstampPath -> (Scientific, Scientific) -> [Module] -> Endo Pcb
-        addClone clonePath offset mods =
-            foldMap addCloneModule mods
-          where
-            modules :: [Module]
-            Just modules = clonePath `M.lookup` modulesByPath
-
-            addCloneModule :: Module -> Endo Pcb
-            addCloneModule mod = Endo $ pcbNodes %~ (++ [Module' cloneMod])
-              where cloneMod = cloneModule templateTstampPath offset clonePath mod
 
         transform :: Endo Pcb
-        transform = foldMap (\(clonePath, (_, offset)) -> addClone clonePath offset templateMods)
-                            (zip cloneTstamps clones)
-                    <> removeOlds
+        transform =
+            foldMap (\(clonePath, (_, offset)) -> addClone netlist templateTstampPath clonePath offset templateMods)
+                    (zip cloneTstamps clones)
+            <> removeOlds
     writeFile "new.kicad_pcb" $ show $ printSExpr $ toSExpr $ appEndo transform pcb
     return ()
 
-findSheetByName :: Netlist -> SheetPath -> Maybe TstampPath
+findSheetByName :: Netlist -> SheetPath 'TargetSheet -> Maybe (TstampPath 'TargetSheet)
 findSheetByName netlist sheetPath =
     case filter (\s -> sheetName s == sheetPath) $ sheets netlist of
       []  -> Nothing
       [x] -> Just $ sheetTstamps x
       _   -> error "Multiple sheets by same name"
 
-componentsBySheet :: Netlist -> M.Map SheetPath [Component]
+componentsBySheet :: Netlist -> M.Map (SheetPath 'TargetSheet) [Component]
 componentsBySheet netlist =
     let comps = Netlist.components netlist
     in M.fromListWith (++) $ map (\c -> (compSheetPath c, [c])) comps
 
-removeSheetModules :: TstampPath -> Endo Pcb
+removeSheetModules :: TstampPath 'TargetSheet-> Endo Pcb
 removeSheetModules sheetPath =
     Endo $ pcbNodes %~ filter onSheet
   where
@@ -95,17 +88,49 @@ removeSheetModules sheetPath =
       = not $ getTstampPath sheetPath `isPrefixOf` getTstampPath path
     onSheet _ = True
 
-cloneModule :: TstampPath -> (Scientific, Scientific) -> TstampPath
-            -> Module -> Module
-cloneModule templatePath offset clonePath =
-    fixupRef . fixupPath . translateModule offset
+addClone :: Netlist
+         -> TstampPath 'TargetSheet   -- ^ template path
+         -> TstampPath 'TargetSheet   -- ^ clone path
+         -> (Scientific, Scientific)  -- ^ clone offset
+         -> [Module]                  -- ^ template modules
+         -> Endo Pcb
+addClone netlist templateTstampPath clonePath offset mods =
+    traceShow sheetComponents $ foldMap addCloneModule mods
   where
-    fixupRef = set (each . fp_text_reference) cloneRefDesig
+    sheetComponents :: M.Map (TstampPath 'TargetModule) RefDesig
+    sheetComponents =
+        M.fromList
+        [ (compTstampPath comp, compRef comp)
+        | comp <- components netlist
+        , compTstampSheetPath comp == clonePath
+        ]
 
-    fixupPath mod
-      | Just stem <- stripPrefix (getTstampPath templatePath) (getTstampPath $ _modulePath mod)
-      = mod & modulePath .~ TstampPath (getTstampPath clonePath ++ stem)
-      | otherwise = error "uh oh"
+    addCloneModule :: Module -> Endo Pcb
+    addCloneModule mod =
+        Endo $ pcbNodes %~ (++ [Module' $ fixupRef cloneMod])
+      where
+        cloneMod =
+              dropPadNets
+            . fixupRef
+            . (modulePath .~ path')
+            . translateModule offset
+            $ mod
+
+        path' :: TstampPath 'TargetModule
+        path'
+          | Just stem <- stripPrefix (getTstampPath templateTstampPath) (getTstampPath $ _modulePath mod)
+          = TstampPath (getTstampPath clonePath ++ stem)
+          | otherwise = error "uh oh"
+
+        cloneRefDesig =
+            case path' `M.lookup` sheetComponents of
+              Nothing -> error $ "Failed to find component for "++views modulePath show mod
+              Just x -> x
+        fixupRef = set (moduleOthers . each . fp_text_reference) cloneRefDesig
+
+dropPadNets :: Module -> Module
+dropPadNets =
+    moduleOthers . each . tag "pad" %~ filter (isn't $ tag "net")
 
 translateModule :: (Scientific, Scientific) -> Module -> Module
 translateModule (dx,dy) = modulePosition %~ f
@@ -113,7 +138,7 @@ translateModule (dx,dy) = modulePosition %~ f
 
 fp_text_reference :: Traversal' SExpr RefDesig
 fp_text_reference =
-    tag "fp_text" . filtered isRef . ix 2 . string . _Unwrapped'
+    tag "fp_text" . filtered isRef . ix 1 . string . _Unwrapped'
   where
     isRef (TString _ "reference" : _) = True
     isRef _ = False
