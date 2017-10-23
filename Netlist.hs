@@ -31,9 +31,6 @@ sheets (Netlist netlist) =
         sheetTstamps <- e ^? each . tag "tstamps" . _head . string . to TstampPath
         return [Sheet {..}]
 
-newtype RefDesig = RefDesig String
-                 deriving (Show)
-
 data Component = Component { compRef        :: RefDesig
                            , compSheetPath  :: SheetPath
                            , compTstampSheetPath :: TstampPath

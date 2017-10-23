@@ -1,28 +1,39 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MonadFailDesugaring #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
 
 module Pcb
-    ( NetId(..)
+    ( -- * Basic types
+      NetId(..)
     , NetName(..)
     , NetClassName(..)
     , ModuleName(..)
     , LayerName(..)
     , SheetPath(..)
     , TstampPath(..)
-    , Via(..)
-    , Segment(..)
-    , Module(..)
+    , RefDesig(..)
+      -- * Nodes
     , Node(..)
-    , Pcb(..)
+      -- ** Vias
+    , Via(..)
+      -- ** Segments
+    , Segment(..)
+      -- ** Modules
+    , Module(..), moduleName, modulePosition, modulePath
+      -- * PCB
+    , Pcb(..), pcbNodes
     , parsePcb
     , parsePcbFromFile
     ) where
 
 import Prelude hiding (fail)
 import Data.Scientific
+import Data.String (IsString)
 import Control.Applicative
 import Control.Monad.Fail
 import Control.Lens
@@ -33,21 +44,32 @@ import SExpr.Parse
 
 newtype NetId = NetId Int
               deriving (Show, Eq, Ord, ToSExpr)
+
 newtype NetName = NetName String
                 deriving (Show, Eq, Ord, ToSExpr)
+
 newtype NetClassName = NetClassName String
                      deriving (Show, Eq, Ord, ToSExpr)
+
 newtype ModuleName = ModuleName String
                    deriving (Show, Eq, Ord, ToSExpr)
+
 newtype TStamp = TStamp String
                deriving (Show, Eq, Ord, ToSExpr)
-newtype SheetPath = SheetPath String
-                  deriving (Show, Eq, Ord, ToSExpr)
+
+newtype SheetPath = SheetPath {getSheetPath :: String}
+                  deriving (Show, Eq, Ord, ToSExpr, IsString)
+makeWrapped ''SheetPath
 
 newtype TstampPath = TstampPath {getTstampPath :: String}
                   deriving (Show, Eq, Ord, ToSExpr)
+
 newtype LayerName = LayerName String
                   deriving (Show, Eq, Ord, ToSExpr)
+
+newtype RefDesig = RefDesig String
+                 deriving (Show)
+makeWrapped ''RefDesig
 
 
 data Via = Via { _viaAt     :: (Scientific, Scientific)
@@ -88,8 +110,9 @@ data Node = Passthru SExpr
           | Segment' Segment
           deriving (Show)
 
-data Pcb = Pcb { pcbNodes :: [Node] }
+data Pcb = Pcb { _pcbNodes :: [Node] }
          deriving (Show)
+makeLenses ''Pcb
 
 instance ToSExpr Pcb where
     toSExpr (Pcb nodes) = withTag "kicad_pcb" (map toSExpr nodes)
