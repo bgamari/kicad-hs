@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MonadFailDesugaring #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
@@ -9,12 +10,15 @@ module Pcb
     , NetClassName(..)
     , ModuleName(..)
     , LayerName(..)
+    , SheetPath(..)
+    , TstampPath(..)
     , Via(..)
     , Segment(..)
     , Module(..)
     , Node(..)
     , Pcb(..)
     , parsePcb
+    , parsePcbFromFile
     ) where
 
 import Prelude hiding (fail)
@@ -28,50 +32,55 @@ import SExpr.Class
 import SExpr.Parse
 
 newtype NetId = NetId Int
-              deriving (Show)
+              deriving (Show, Eq, Ord, ToSExpr)
 newtype NetName = NetName String
-                deriving (Show)
+                deriving (Show, Eq, Ord, ToSExpr)
 newtype NetClassName = NetClassName String
-                     deriving (Show)
+                     deriving (Show, Eq, Ord, ToSExpr)
 newtype ModuleName = ModuleName String
-                   deriving (Show)
+                   deriving (Show, Eq, Ord, ToSExpr)
 newtype TStamp = TStamp String
-               deriving (Show)
-data LayerName = LayerName String
-               deriving (Show)
+               deriving (Show, Eq, Ord, ToSExpr)
+newtype SheetPath = SheetPath String
+                  deriving (Show, Eq, Ord, ToSExpr)
+
+newtype TstampPath = TstampPath {getTstampPath :: String}
+                  deriving (Show, Eq, Ord, ToSExpr)
+newtype LayerName = LayerName String
+                  deriving (Show, Eq, Ord, ToSExpr)
 
 
-data Via = Via { _viaAt :: (Scientific, Scientific)
-               , _viaSize :: Scientific
-               , _viaDrill :: Scientific
+data Via = Via { _viaAt     :: (Scientific, Scientific)
+               , _viaSize   :: Scientific
+               , _viaDrill  :: Scientific
                , _viaLayers :: [LayerName]
-               , _viaNet :: NetId
+               , _viaNet    :: NetId
                }
          deriving (Show)
 makeLenses ''Via
 
 data Segment = Segment { _segmentStart :: (Scientific, Scientific)
-                       , _segmentEnd :: (Scientific, Scientific)
+                       , _segmentEnd   :: (Scientific, Scientific)
                        , _segmentWidth :: Scientific
                        , _segmentLayer :: LayerName
-                       , _segmentNet :: NetId
+                       , _segmentNet   :: NetId
                        }
              deriving (Show)
 makeLenses ''Segment
 
-data Module = Module { _moduleName :: ModuleName
-                     , _moduleLayer :: LayerName
+data Module = Module { _moduleName     :: ModuleName
+                     , _moduleLayer    :: LayerName
                      , _moduleEditTime :: TStamp
-                     , _moduleTStamp :: TStamp
+                     , _moduleTStamp   :: TStamp
                      , _modulePosition :: (Scientific, Scientific, Scientific)
-                     , _moduleOthers :: [SExpr]
+                     , _modulePath     :: TstampPath
+                     , _moduleOthers   :: [SExpr]
                      }
             deriving (Show)
 makeLenses ''Module
 
 data Node = Passthru SExpr
           | Layers [(Int, LayerName, String, Bool)]
-          | Setup [SExpr]
           | Net NetId NetName
           | NetClass NetClassName [SExpr]
           | Module' Module
@@ -79,18 +88,57 @@ data Node = Passthru SExpr
           | Segment' Segment
           deriving (Show)
 
-data Pcb = Pcb [Node]
+data Pcb = Pcb { pcbNodes :: [Node] }
          deriving (Show)
+
+instance ToSExpr Pcb where
+    toSExpr (Pcb nodes) = withTag "kicad_pcb" (map toSExpr nodes)
 
 instance ToSExpr Node where
     toSExpr (Passthru x) = x
-    toSExpr (Layers layers) = TChild $ map f layers
+    toSExpr (Layers layers) = withTag "layers" $ map f layers
       where
         f (layerN, LayerName layerName, layerType, hidden) =
             TChild $ [ toSExpr layerN
                      , toSExpr layerName
                      , toSExpr layerType
                     ] ++ (if hidden then [stringSExpr "hide"] else [])
+    toSExpr (Net netId netName) =
+        withTag "net" [toSExpr netId, toSExpr netName]
+    toSExpr (NetClass className rest) =
+        withTag "net_class" $ toSExpr className : rest
+    toSExpr (Module' mod) =
+        withTag "module"
+        $ [ toSExpr $ _moduleName mod
+          , withTag "layer"  [toSExpr $ _moduleLayer mod]
+          , withTag "tedit"  [toSExpr $ _moduleEditTime mod]
+          , withTag "tstamp" [toSExpr $ _moduleTStamp mod]
+          , withTag "at"     [toSExpr x, toSExpr y, toSExpr theta]
+          , withTag "path"   [toSExpr $ _modulePath mod]
+          ] ++ _moduleOthers mod
+      where (x,y,theta) = _modulePosition mod
+    toSExpr (Via' via) =
+        withTag "via"
+        $ [ withTag "at"     [toSExpr x, toSExpr y]
+          , withTag "size"   [toSExpr $ _viaSize via]
+          , withTag "drill"  [toSExpr $ _viaDrill via]
+          , withTag "layers" $ map toSExpr $ _viaLayers via
+          , withTag "net"    [toSExpr $ _viaNet via]
+          ]
+      where (x,y) = _viaAt via
+    toSExpr (Segment' seg) =
+        withTag "segment"
+        $ [ withTag "start" [toSExpr sx, toSExpr sy]
+          , withTag "end"   [toSExpr ex, toSExpr ey]
+          , withTag "width" [toSExpr $ _segmentWidth seg]
+          , withTag "layer" [toSExpr $ _segmentLayer seg]
+          , withTag "net"   [toSExpr $ _segmentNet   seg]
+          ]
+      where (sx,sy) = _segmentStart seg
+            (ex,ey) = _segmentEnd seg
+
+withTag :: String -> [SExpr] -> SExpr
+withTag tag vals = TChild $ toSExpr tag : vals
 
 choice = foldr1 (<|>)
 
@@ -151,8 +199,9 @@ parseModule = taggedP "module" $ \rest -> do
           <*> field "at" (\xs -> case xs of
                                    [a,b]   -> (,,) <$> numberP a <*> numberP b <*> pure 0
                                    [a,b,c] -> (,,) <$> numberP a <*> numberP b <*> numberP c
-                                   _       -> fail "bad at"
-                         )
+                                   _       -> fail "bad at")
+          <*> field "path" (expectOne $ fmap TstampPath . stringP)
+
     return $ mod rest''
 
 n3 :: ((Scientific,Scientific,Scientific) -> a) -> [SExpr] -> SExprP a
@@ -187,5 +236,9 @@ parseNetId e = do
       Right i -> pure $ NetId i
 
 parsePcb :: SExpr -> SExprP Pcb
-parsePcb  = taggedP "kicad_pcb" $ \xs -> Pcb <$> mapM parseNode xs
+parsePcb = taggedP "kicad_pcb" $ \xs -> Pcb <$> mapM parseNode xs
 
+parsePcbFromFile :: FilePath -> IO (Either String Pcb)
+parsePcbFromFile path = do
+    Just sexpr <- parseSExprFromFile path
+    return $ runSExprP $ parsePcb sexpr

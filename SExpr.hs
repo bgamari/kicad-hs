@@ -67,8 +67,16 @@ stringSExpr s = TString quote s
       | otherwise = Quoted
 
 printSExpr :: SExpr -> PP.Doc ()
+printSExpr (TString _ "") = PP.dquotes mempty
 printSExpr (TString Quoted s) = PP.dquotes $ PP.pretty s
 printSExpr (TString Unquoted s) = PP.pretty s
-printSExpr (TNum n) = PP.pretty (show n)
+printSExpr (TNum n)
+  | Right int <- floatingOrInteger n
+  = PP.pretty (int :: Integer)
+  | otherwise
+  = PP.pretty (formatScientific Fixed Nothing n)
 printSExpr (THexInt n) = "0x" <> PP.pretty (showHex n "")
 printSExpr (TChild xs) = PP.parens $ PP.hang 1 $ PP.sep $ map printSExpr xs
+
+parseSExprFromFile :: FilePath -> IO (Maybe SExpr)
+parseSExprFromFile path = parseFromFile parseSExpr path
