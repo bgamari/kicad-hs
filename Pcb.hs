@@ -190,6 +190,7 @@ parseNode e =
     , known "zone"
     , known "version"
     , known "dimension"
+    , known "gr_line"
     , known "host"
     , known "general"
     , known "page"
