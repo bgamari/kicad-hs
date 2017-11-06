@@ -17,17 +17,17 @@ import SExpr.Parse
 import SExpr.Class
 
 template :: SheetPath 'TargetSheet
-template = SheetPath "/chanC/"
+template = SheetPath "/chanH/"
 
 clones :: [(SheetPath 'TargetSheet, (Scientific, Scientific))]
 clones =
-    [ SheetPath "/chanA/" `offsetBy` (0, -10)
-    , SheetPath "/chanB/" `offsetBy` (0, -20)
-    , SheetPath "/chanD/" `offsetBy` (0, -30)
-    , SheetPath "/chanE/" `offsetBy` (0, -40)
-    , SheetPath "/chanF/" `offsetBy` (0, -50)
-    , SheetPath "/chanG/" `offsetBy` (0, -60)
-    , SheetPath "/chanH/" `offsetBy` (0, -70)
+    [ SheetPath "/chanA/" `offsetBy` (22, 30)
+    , SheetPath "/chanB/" `offsetBy` (0,  30)
+    , SheetPath "/chanC/" `offsetBy` (22, 20)
+    , SheetPath "/chanD/" `offsetBy` (0,  20)
+    , SheetPath "/chanE/" `offsetBy` (22, 10)
+    , SheetPath "/chanF/" `offsetBy` (0,  10)
+    , SheetPath "/chanG/" `offsetBy` (22,  0)
     ]
   where offsetBy path offset = (path, offset)
 
@@ -39,7 +39,7 @@ main = do
     print templateTstampPath
     --print $ Netlist.components netlist
 
-    Right pcb <- parsePcbFromFile "../adc-pmod.kicad_pcb"
+    pcb <- either error id <$> parsePcbFromFile "../adc-pmod.kicad_pcb"
     let modulesByPath :: M.Map (TstampPath 'TargetModule) Module
         modulesByPath = M.fromList
             [ (_modulePath m, m)
