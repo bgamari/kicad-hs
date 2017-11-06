@@ -39,6 +39,7 @@ import Data.String (IsString)
 import Control.Applicative
 import Control.Monad.Fail
 import Control.Lens
+import Numeric
 
 import SExpr
 import SExpr.Class
@@ -224,8 +225,8 @@ parseModule = taggedP "module" $ \rest -> do
     (rest'', mod) <- flip runParseFields' rest' $
         Module moduleName
           <$> field "layer" (expectOne $ fmap LayerName . stringP)
-          <*> field "tedit" (expectOne $ fmap TStamp . stringP)
-          <*> field "tstamp" (expectOne $ fmap TStamp . stringP)
+          <*> field "tedit" (expectOne parseTStamp)
+          <*> field "tstamp" (expectOne parseTStamp)
           <*> field "at" (\xs -> case xs of
                                    [a,b]   -> (,,) <$> numberP a <*> numberP b <*> pure 0
                                    [a,b,c] -> (,,) <$> numberP a <*> numberP b <*> numberP c
@@ -264,6 +265,15 @@ parseNetId e = do
     case floatingOrInteger n of
       Left _ -> fail "parseNetId: expected integer"
       Right i -> pure $ NetId i
+
+parseTStamp :: SExpr -> SExprP TStamp
+parseTStamp (TString _ s) = pure $ TStamp s
+parseTStamp (TNum x)
+  -- we might have mistakenly parsed it as a number since timestamps are
+  -- strings containing hexadecimal numbers, yet are unquoted
+  | Right n <- floatingOrInteger x
+  = pure $ TStamp $ showHex n ""
+parseTStamp x = expected "timestamp" x
 
 parsePcb :: SExpr -> SExprP Pcb
 parsePcb = taggedP "kicad_pcb" $ \xs -> Pcb <$> mapM parseNode xs
