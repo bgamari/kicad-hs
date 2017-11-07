@@ -15,6 +15,7 @@ module SExpr.Parse
     , ParseFieldsM
     , field
     , optionalField
+    , remainingFields
     , runParseFields'
     , runParseFields
       -- * Lenses
@@ -59,6 +60,9 @@ optionalField key f = PFM $ \es ->
       (rest, [es']) -> do r <- f es'
                           pure (rest, Just r)
       (_, _)        -> fail $ "Too many keys "++key++" found"
+
+remainingFields :: ParseFieldsM [SExpr]
+remainingFields = PFM $ \es -> pure ([], es)
 
 -- | Parse fields, returning unparsed 'SExpr's.
 runParseFields' :: ParseFieldsM a -> [SExpr]

@@ -99,7 +99,7 @@ data Via = Via { _viaAt     :: (Scientific, Scientific)
                , _viaDrill  :: Scientific
                , _viaLayers :: [LayerName]
                , _viaNet    :: NetId
-               , _viaTstamp :: Maybe TStamp
+               , _viaOthers :: [SExpr]
                }
          deriving (Show)
 makeLenses ''Via
@@ -171,7 +171,7 @@ instance ToSExpr Node where
           , withTag "drill"  [toSExpr $ _viaDrill via]
           , withTag "layers" $ map toSExpr $ _viaLayers via
           , withTag "net"    [toSExpr $ _viaNet via]
-          ]
+          ] ++ _viaOthers via
       where (x,y) = _viaAt via
     toSExpr (Segment' seg) =
         withTag "segment"
@@ -229,7 +229,7 @@ parseVia = taggedP "via" $ runParseFields $
         <*> field "drill" (n1 id)
         <*> field "layers" (mapM parseLayerName)
         <*> field "net" (expectOne parseNetId)
-        <*> optionalField "tstamp" (expectOne parseTStamp)
+        <*> remainingFields
 
 parseSegment :: SExpr -> SExprP Segment
 parseSegment = taggedP "segment" $ runParseFields $
