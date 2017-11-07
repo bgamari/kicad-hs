@@ -14,6 +14,7 @@ module SExpr.Parse
       -- * Parsing fields
     , ParseFieldsM
     , field
+    , optionalField
     , runParseFields'
     , runParseFields
       -- * Lenses
@@ -49,6 +50,14 @@ field key f = PFM $ \es ->
       (_, [])       -> fail $ "Key "++key++" not found"
       (rest, [es']) -> do r <- f es'
                           pure (rest, r)
+      (_, _)        -> fail $ "Too many keys "++key++" found"
+
+optionalField :: String -> ([SExpr] -> SExprP a) -> ParseFieldsM (Maybe a)
+optionalField key f = PFM $ \es ->
+    case partitionEithers $ map (matching (tag key)) es of
+      (_, [])       -> pure (es, Nothing)
+      (rest, [es']) -> do r <- f es'
+                          pure (rest, Just r)
       (_, _)        -> fail $ "Too many keys "++key++" found"
 
 -- | Parse fields, returning unparsed 'SExpr's.
