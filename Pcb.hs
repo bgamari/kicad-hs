@@ -21,8 +21,21 @@ module Pcb
     , PathTarget(..)
       -- * Nodes
     , Node(..)
+      -- ** Prisms
+    , _Passthru
+    , _Layers
+    , _Net
+    , _NetClass
+    , _Module'
+    , _Via'
+    , _Segment'
       -- ** Vias
     , Via(..)
+    , viaAt
+    , viaSize
+    , viaDrill
+    , viaLayers
+    , viaNet
       -- ** Segments
     , Segment(..)
       -- ** Modules
@@ -31,6 +44,7 @@ module Pcb
     , Pcb(..), pcbNodes
     , parsePcb
     , parsePcbFromFile
+    , writePcbToFile
     ) where
 
 import Prelude hiding (fail)
@@ -85,6 +99,7 @@ data Via = Via { _viaAt     :: (Scientific, Scientific)
                , _viaDrill  :: Scientific
                , _viaLayers :: [LayerName]
                , _viaNet    :: NetId
+               , _viaTstamp :: Maybe TStamp
                }
          deriving (Show)
 makeLenses ''Via
@@ -117,6 +132,7 @@ data Node = Passthru SExpr
           | Via' Via
           | Segment' Segment
           deriving (Show)
+makePrisms ''Node
 
 data Pcb = Pcb { _pcbNodes :: [Node] }
          deriving (Show)
@@ -191,6 +207,10 @@ parseNode e =
     , known "version"
     , known "dimension"
     , known "gr_line"
+    , known "gr_poly"
+    , known "gr_circle"
+    , known "gr_text"
+    , known "segment"
     , known "host"
     , known "general"
     , known "page"
@@ -209,6 +229,7 @@ parseVia = taggedP "via" $ runParseFields $
         <*> field "drill" (n1 id)
         <*> field "layers" (mapM parseLayerName)
         <*> field "net" (expectOne parseNetId)
+        <*> optionalField "tstamp" (expectOne parseTStamp)
 
 parseSegment :: SExpr -> SExprP Segment
 parseSegment = taggedP "segment" $ runParseFields $
@@ -283,3 +304,6 @@ parsePcbFromFile :: FilePath -> IO (Either String Pcb)
 parsePcbFromFile path = do
     Just sexpr <- parseSExprFromFile path
     return $ runSExprP $ parsePcb sexpr
+
+writePcbToFile :: FilePath -> Pcb -> IO ()
+writePcbToFile path = writeFile path . show . printSExpr . toSExpr
