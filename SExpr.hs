@@ -66,9 +66,15 @@ stringSExpr s = TString quote s
       | all (`CS.member` unquotedChars) s = Unquoted
       | otherwise = Quoted
 
+escapeString :: String -> String
+escapeString = foldMap f
+  where
+    f '\n' = "\\n"
+    f c    = [c]
+
 printSExpr :: SExpr -> PP.Doc ()
 printSExpr (TString _ "") = PP.dquotes mempty
-printSExpr (TString Quoted s) = PP.dquotes $ PP.pretty s
+printSExpr (TString Quoted s) = PP.dquotes $ PP.pretty $ escapeString s
 printSExpr (TString Unquoted s) = PP.pretty s
 printSExpr (TNum n)
   | Right int <- floatingOrInteger n
