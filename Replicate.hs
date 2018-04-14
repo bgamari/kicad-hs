@@ -64,7 +64,7 @@ main = do
             foldMap (\(clonePath, (_, offset)) -> addClone netlist templateTstampPath clonePath offset templateMods)
                     (zip cloneTstamps clones)
             <> removeOlds
-    writeFile "new.kicad_pcb" $ show $ printSExpr $ toSExpr $ appEndo transform pcb
+    writePcbToFile "new.kicad_pcb" $ appEndo transform pcb
     return ()
 
 findSheetByName :: Netlist -> SheetPath 'TargetSheet -> Maybe (TstampPath 'TargetSheet)
