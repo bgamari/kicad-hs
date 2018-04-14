@@ -112,11 +112,13 @@ data Via = Via { _viaAt     :: Point V2 Scientific
          deriving (Show)
 makeLenses ''Via
 
-data Segment = Segment { _segmentStart :: Point V2 Scientific
-                       , _segmentEnd   :: Point V2 Scientific
-                       , _segmentWidth :: Scientific
-                       , _segmentLayer :: LayerName
-                       , _segmentNet   :: NetId
+data Segment = Segment { _segmentStart  :: Point V2 Scientific
+                       , _segmentEnd    :: Point V2 Scientific
+                       , _segmentWidth  :: Scientific
+                       , _segmentLayer  :: LayerName
+                       , _segmentNet    :: NetId
+                       , _segmentTStamp :: TStamp
+                       , _segmentOthers :: [SExpr]
                        }
              deriving (Show)
 makeLenses ''Segment
@@ -185,12 +187,13 @@ instance ToSExpr Node where
       where P (V2 x y) = _viaAt via
     toSExpr (Segment' seg) =
         withTag "segment"
-        $ [ withTag "start" [toSExpr sx, toSExpr sy]
-          , withTag "end"   [toSExpr ex, toSExpr ey]
-          , withTag "width" [toSExpr $ _segmentWidth seg]
-          , withTag "layer" [toSExpr $ _segmentLayer seg]
-          , withTag "net"   [toSExpr $ _segmentNet   seg]
-          ]
+        $ [ withTag "start"  [toSExpr sx, toSExpr sy]
+          , withTag "end"    [toSExpr ex, toSExpr ey]
+          , withTag "width"  [toSExpr $ _segmentWidth  seg]
+          , withTag "layer"  [toSExpr $ _segmentLayer  seg]
+          , withTag "net"    [toSExpr $ _segmentNet    seg]
+          , withTag "tstamp" [toSExpr $ _segmentTStamp seg]
+          ] ++ _segmentOthers seg
       where P (V2 sx sy) = _segmentStart seg
             P (V2 ex ey) = _segmentEnd seg
 
@@ -249,6 +252,8 @@ parseSegment = taggedP "segment" $ runParseFields $
       <*> field "width" (n1 id)
       <*> field "layer" (expectOne parseLayerName)
       <*> field "net" (expectOne parseNetId)
+      <*> field "tstamp" (expectOne parseTStamp)
+      <*> remainingFields
 
 parseModule :: SExpr -> SExprP Module
 parseModule = taggedP "module" $ \rest -> do
