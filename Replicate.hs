@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+import Data.Foldable (fold)
 import Data.List (isPrefixOf, stripPrefix)
 import Data.Maybe
 import Data.Monoid
@@ -61,36 +62,36 @@ main = do
 
 applyUnit :: Netlist -> Unit -> Endo Pcb
 applyUnit netlist unit =
-    foldMap doClone (zip cloneTstamps (clones unit))
-    <> removeOlds
+    fold [ applyClone path clone <> removeSheetModules path
+         | clone <- clones unit
+         , let path = findCloneTstamp clone
+         ]
   where
-    Just templateTstampPath = findSheetByName netlist (unitTemplate unit)
+    templateComps :: [Component]
     templateComps = case unitTemplate unit `M.lookup` componentsBySheet netlist of
       Nothing -> error $ "failed to find template " ++ show (unitTemplate unit)
       Just x -> x
 
-    cloneTstamps :: [TstampPath 'TargetSheet]
-    cloneTstamps = map findClone (clones unit)
-      where
-        findClone :: Clone -> TstampPath 'TargetSheet
-        findClone clone = fromMaybe uhOh $ findSheetByName netlist (cloneSheet clone)
-          where uhOh = error $ "failed to find path of sheet " ++ show (cloneSheet clone)
+    Just templateTstampPath = findSheetByName netlist (unitTemplate unit)
 
-    doClone (clonePath, Clone _ offset) = Endo $ \pcb ->
+    findCloneTstamp :: Clone -> TstampPath 'TargetSheet
+    findCloneTstamp clone = fromMaybe uhOh $ findSheetByName netlist (cloneSheet clone)
+      where uhOh = error $ "failed to find path of sheet " ++ show (cloneSheet clone)
+
+    applyClone :: TstampPath 'TargetSheet -> Clone -> Endo Pcb
+    applyClone clonePath (Clone _ offset) = Endo $ \pcb ->
         let templateMods :: [Module]
             templateMods = [ mod
-                           | c <- templateComps
-                           , Just mod <- pure $ compTstampPath c `M.lookup` modulesByPath
-                           ]
+                            | c <- templateComps
+                            , Just mod <- pure $ compTstampPath c `M.lookup` modulesByPath
+                            ]
+
             modulesByPath :: M.Map (TstampPath 'TargetModule) Module
             modulesByPath = M.fromList
                 [ (_modulePath m, m)
                 | Module' m <- _pcbNodes pcb
                 ]
         in appEndo (addClone netlist templateTstampPath clonePath offset templateMods) pcb
-
-    removeOlds = foldMap removeSheetModules cloneTstamps
-
 
 findSheetByName :: Netlist -> SheetPath 'TargetSheet -> Maybe (TstampPath 'TargetSheet)
 findSheetByName netlist sheetPath =
