@@ -25,6 +25,7 @@ data Clone = Clone { cloneSheet :: SheetPath 'TargetSheet
                    }
 
 data Unit = Unit { unitTemplate :: SheetPath 'TargetSheet
+                 , traceRegions :: [((Scientific, Scientific), (Scientific, Scientific))]
                  , clones :: [Clone]
                  }
 
@@ -44,6 +45,7 @@ instance FromJSON Clone where
 instance FromJSON Unit where
     parseJSON = withObject "unit" $ \o ->
       Unit <$> o .: "template"
+           <*> o .:? "trace-regions" .!= []
            <*> o .: "clones"
 
 instance FromJSON Config where
@@ -57,11 +59,48 @@ main = do
     config <- either (fail . show) pure =<< Data.Yaml.decodeFileEither "config.yaml"
     Just netlist <- parseNetlistFromFile $ netlistFile config
     pcb <- either error id <$> parsePcbFromFile (pcbFile config)
-    let transform = foldMap (applyUnit netlist) (units config)
+    let transform = foldMap (applyUnitComponents netlist) (units config)
+                 <> foldMap applyUnitTraces (units config)
     writePcbToFile "new.kicad_pcb" $ appEndo transform pcb
 
-applyUnit :: Netlist -> Unit -> Endo Pcb
-applyUnit netlist unit =
+applyUnitTraces :: Unit -> Endo Pcb
+applyUnitTraces unit = Endo $ \pcb ->
+    let templateTraces :: [Segment]
+        templateTraces = [ seg
+                         | Segment' seg <- _pcbNodes pcb
+                         , segmentInTraceRegion seg
+                         ]
+        templateVias :: [Via]
+        templateVias = [ via
+                       | Via' via <- _pcbNodes pcb
+                       , inTraceRegion (_viaAt via)
+                       ]
+
+        cloneNodes :: Clone -> [Node]
+        cloneNodes clone = map Via' vias ++ map Segment' traces
+          where
+            offsetPoint (x,y) = (x + fst (cloneOffset clone), y + snd (cloneOffset clone))
+            vias = [ via & viaAt %~ offsetPoint
+                   | via <- templateVias
+                   ]
+            traces = [ seg & (segmentStart %~ offsetPoint)
+                           . (segmentEnd   %~ offsetPoint)
+                     | seg <- templateTraces
+                     ]
+
+    in Pcb $ _pcbNodes pcb ++ foldMap cloneNodes (clones unit)
+  where
+    inRegion ((x0,y0), (x1,y1)) (x,y) = x >= x0 && x <= x1 && y >= y0 && y <= y1
+
+    inTraceRegion :: (Scientific, Scientific) -> Bool
+    inTraceRegion p = any (`inRegion` p) (traceRegions unit)
+
+    segmentInTraceRegion :: Segment -> Bool
+    segmentInTraceRegion seg =
+        inTraceRegion (_segmentStart seg) && inTraceRegion (_segmentEnd seg)
+
+applyUnitComponents :: Netlist -> Unit -> Endo Pcb
+applyUnitComponents netlist unit =
     fold [ applyClone path clone <> removeSheetModules path
          | clone <- clones unit
          , let path = findCloneTstamp clone

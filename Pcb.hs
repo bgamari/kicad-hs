@@ -38,6 +38,11 @@ module Pcb
     , viaNet
       -- ** Segments
     , Segment(..)
+    , segmentStart
+    , segmentEnd
+    , segmentWidth
+    , segmentLayer
+    , segmentNet
       -- ** Modules
     , Module(..), moduleName, modulePosition, modulePath, moduleOthers
       -- * PCB
