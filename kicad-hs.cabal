@@ -26,6 +26,7 @@ executable kicad-hs
                        containers >=0.5 && <0.6,
                        transformers >=0.5 && <0.6,
                        charset,
+                       linear,
                        trifecta,
                        prettyprinter,
                        text

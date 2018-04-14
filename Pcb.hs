@@ -1,6 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
@@ -59,6 +60,8 @@ import Control.Applicative
 import Control.Monad.Fail
 import Control.Lens
 import Numeric
+import Linear
+import Linear.Affine
 
 import SExpr
 import SExpr.Class
@@ -99,7 +102,7 @@ newtype RefDesig = RefDesig String
 makeWrapped ''RefDesig
 
 
-data Via = Via { _viaAt     :: (Scientific, Scientific)
+data Via = Via { _viaAt     :: Point V2 Scientific
                , _viaSize   :: Scientific
                , _viaDrill  :: Scientific
                , _viaLayers :: [LayerName]
@@ -109,8 +112,8 @@ data Via = Via { _viaAt     :: (Scientific, Scientific)
          deriving (Show)
 makeLenses ''Via
 
-data Segment = Segment { _segmentStart :: (Scientific, Scientific)
-                       , _segmentEnd   :: (Scientific, Scientific)
+data Segment = Segment { _segmentStart :: Point V2 Scientific
+                       , _segmentEnd   :: Point V2 Scientific
                        , _segmentWidth :: Scientific
                        , _segmentLayer :: LayerName
                        , _segmentNet   :: NetId
@@ -122,7 +125,8 @@ data Module = Module { _moduleName     :: ModuleName
                      , _moduleLayer    :: LayerName
                      , _moduleEditTime :: TStamp
                      , _moduleTStamp   :: TStamp
-                     , _modulePosition :: (Scientific, Scientific, Scientific)
+                     , _modulePosition :: Point V2 Scientific
+                     , _moduleRotation :: Scientific
                      , _modulePath     :: TstampPath 'TargetModule
                      , _moduleOthers   :: [SExpr]
                      }
@@ -168,7 +172,8 @@ instance ToSExpr Node where
           , withTag "at"     [toSExpr x, toSExpr y, toSExpr theta]
           , withTag "path"   [toSExpr $ _modulePath mod]
           ] ++ _moduleOthers mod
-      where (x,y,theta) = _modulePosition mod
+      where P (V2 x y) = _modulePosition mod
+            theta =_moduleRotation mod
     toSExpr (Via' via) =
         withTag "via"
         $ [ withTag "at"     [toSExpr x, toSExpr y]
@@ -177,7 +182,7 @@ instance ToSExpr Node where
           , withTag "layers" $ map toSExpr $ _viaLayers via
           , withTag "net"    [toSExpr $ _viaNet via]
           ] ++ _viaOthers via
-      where (x,y) = _viaAt via
+      where P (V2 x y) = _viaAt via
     toSExpr (Segment' seg) =
         withTag "segment"
         $ [ withTag "start" [toSExpr sx, toSExpr sy]
@@ -186,8 +191,8 @@ instance ToSExpr Node where
           , withTag "layer" [toSExpr $ _segmentLayer seg]
           , withTag "net"   [toSExpr $ _segmentNet   seg]
           ]
-      where (sx,sy) = _segmentStart seg
-            (ex,ey) = _segmentEnd seg
+      where P (V2 sx sy) = _segmentStart seg
+            P (V2 ex ey) = _segmentEnd seg
 
 withTag :: String -> [SExpr] -> SExpr
 withTag tag vals = TChild $ toSExpr tag : vals
@@ -229,7 +234,7 @@ parseNode e =
 
 parseVia :: SExpr -> SExprP Via
 parseVia = taggedP "via" $ runParseFields $
-    Via <$> field "at" (n2 id)
+    Via <$> field "at" (n2 (\(x,y) -> P $ V2 x y))
         <*> field "size" (n1 id)
         <*> field "drill" (n1 id)
         <*> field "layers" (mapM parseLayerName)
@@ -239,8 +244,8 @@ parseVia = taggedP "via" $ runParseFields $
 parseSegment :: SExpr -> SExprP Segment
 parseSegment = taggedP "segment" $ runParseFields $
     Segment
-      <$> field "start" (n2 id)
-      <*> field "end" (n2 id)
+      <$> field "start" (n2 (\(x,y) -> P $ V2 x y))
+      <*> field "end" (n2 (\(x,y) -> P $ V2 x y))
       <*> field "width" (n1 id)
       <*> field "layer" (expectOne parseLayerName)
       <*> field "net" (expectOne parseNetId)
@@ -249,16 +254,23 @@ parseModule :: SExpr -> SExprP Module
 parseModule = taggedP "module" $ \rest -> do
     name:rest' <- pure rest
     moduleName <- ModuleName <$> stringP name
-    (rest'', mod) <- flip runParseFields' rest' $
-        Module moduleName
-          <$> field "layer" (expectOne $ fmap LayerName . stringP)
-          <*> field "tedit" (expectOne parseTStamp)
-          <*> field "tstamp" (expectOne parseTStamp)
-          <*> field "at" (\xs -> case xs of
-                                   [a,b]   -> (,,) <$> numberP a <*> numberP b <*> pure 0
-                                   [a,b,c] -> (,,) <$> numberP a <*> numberP b <*> numberP c
-                                   _       -> fail "bad at")
-          <*> field "path" (expectOne $ fmap TstampPath . stringP)
+    (rest'', mod) <- flip runParseFields' rest' $ do
+        layer <- field "layer" (expectOne $ fmap LayerName . stringP)
+        tedit <- field "tedit" (expectOne parseTStamp)
+        tstamp <- field "tstamp" (expectOne parseTStamp)
+        posRot <- field "at"
+            $ \xs -> case xs of
+                       [a,b]   -> do x <- numberP a
+                                     y <- numberP b
+                                     return (P $ V2 x y, 0)
+                       [a,b,c] -> do x <- numberP a
+                                     y <- numberP b
+                                     rot <- numberP c
+                                     return (P $ V2 x y, rot)
+                       _       -> fail "bad at"
+
+        path <- field "path" (expectOne $ fmap TstampPath . stringP)
+        pure $ Module moduleName layer tedit tstamp (fst posRot) (snd posRot) path
 
     return $ mod rest''
 

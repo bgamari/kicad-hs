@@ -1,6 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 import Data.Foldable (fold)
@@ -10,6 +11,8 @@ import Data.Monoid
 import Data.Yaml
 import Control.Lens
 import Data.Scientific
+import Linear
+import Linear.Affine
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Debug.Trace
@@ -21,11 +24,11 @@ import SExpr.Parse
 import SExpr.Class
 
 data Clone = Clone { cloneSheet :: SheetPath 'TargetSheet
-                   , cloneOffset :: (Scientific, Scientific)
+                   , cloneOffset :: V2 Scientific
                    }
 
 data Unit = Unit { unitTemplate :: SheetPath 'TargetSheet
-                 , traceRegions :: [((Scientific, Scientific), (Scientific, Scientific))]
+                 , traceRegions :: [(Point V2 Scientific, Point V2 Scientific)]
                  , clones :: [Clone]
                  }
 
@@ -36,6 +39,12 @@ data Config = Config { pcbFile :: FilePath
 
 instance FromJSON (SheetPath t) where
     parseJSON = withText "sheet path" $ \t -> pure $ SheetPath $ T.unpack t
+
+instance FromJSON a => FromJSON (Point V2 a) where
+    parseJSON = fmap (\(x,y) -> P (V2 x y)) . parseJSON
+
+instance FromJSON a => FromJSON (V2 a) where
+    parseJSON = fmap (uncurry V2) . parseJSON
 
 instance FromJSON Clone where
     parseJSON = withObject "clone" $ \o ->
@@ -79,7 +88,7 @@ applyUnitTraces unit = Endo $ \pcb ->
         cloneNodes :: Clone -> [Node]
         cloneNodes clone = map Via' vias ++ map Segment' traces
           where
-            offsetPoint (x,y) = (x + fst (cloneOffset clone), y + snd (cloneOffset clone))
+            offsetPoint = (.+^ cloneOffset clone)
             vias = [ via & viaAt %~ offsetPoint
                    | via <- templateVias
                    ]
@@ -90,9 +99,10 @@ applyUnitTraces unit = Endo $ \pcb ->
 
     in Pcb $ _pcbNodes pcb ++ foldMap cloneNodes (clones unit)
   where
-    inRegion ((x0,y0), (x1,y1)) (x,y) = x >= x0 && x <= x1 && y >= y0 && y <= y1
+    inRegion (P (V2 x0 y0), P (V2 x1 y1)) (P (V2 x y)) =
+        x >= x0 && x <= x1 && y >= y0 && y <= y1
 
-    inTraceRegion :: (Scientific, Scientific) -> Bool
+    inTraceRegion :: Point V2 Scientific -> Bool
     inTraceRegion p = any (`inRegion` p) (traceRegions unit)
 
     segmentInTraceRegion :: Segment -> Bool
@@ -156,7 +166,7 @@ removeSheetModules sheetPath =
 addClone :: Netlist
          -> TstampPath 'TargetSheet   -- ^ template path
          -> TstampPath 'TargetSheet   -- ^ clone path
-         -> (Scientific, Scientific)  -- ^ clone offset
+         -> V2 Scientific             -- ^ clone offset
          -> [Module]                  -- ^ template modules
          -> Endo Pcb
 addClone netlist templateTstampPath clonePath offset mods =
@@ -197,9 +207,8 @@ dropPadNets :: Module -> Module
 dropPadNets =
     moduleOthers . each . tag "pad" %~ filter (isn't $ tag "net")
 
-translateModule :: (Scientific, Scientific) -> Module -> Module
-translateModule (dx,dy) = modulePosition %~ f
-  where f (x,y,theta) = (dx+x, dy+y, theta)
+translateModule :: V2 Scientific -> Module -> Module
+translateModule offset = modulePosition %~ (.+^ offset)
 
 fp_text_reference :: Traversal' SExpr RefDesig
 fp_text_reference =
