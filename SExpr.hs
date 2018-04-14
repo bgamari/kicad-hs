@@ -57,7 +57,7 @@ parseSExpr =
     child = TChild <$> parens (many parseSExpr)
 
 unquotedChars :: CS.CharSet
-unquotedChars = CS.alnum <> CS.fromList "._/+-~:%*${}?"
+unquotedChars = CS.alnum <> CS.fromList ".,#_/+-~:%*${}?"
 
 stringSExpr :: String -> SExpr
 stringSExpr s = TString quote s
