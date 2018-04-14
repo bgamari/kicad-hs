@@ -65,7 +65,10 @@ applyUnit netlist unit =
     <> removeOlds
   where
     Just templateTstampPath = findSheetByName netlist (unitTemplate unit)
-    Just templateComps = unitTemplate unit `M.lookup` componentsBySheet netlist
+    templateComps = case unitTemplate unit `M.lookup` componentsBySheet netlist of
+      Nothing -> error $ "failed to find template " ++ show (unitTemplate unit)
+      Just x -> x
+
     cloneTstamps :: [TstampPath 'TargetSheet]
     cloneTstamps = map findClone (clones unit)
       where
