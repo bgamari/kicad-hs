@@ -1,13 +1,16 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 import Data.List (isPrefixOf, stripPrefix)
 import Data.Maybe
 import Data.Monoid
+import Data.Yaml
 import Control.Lens
 import Data.Scientific
 import qualified Data.Map.Strict as M
+import qualified Data.Text as T
 import Debug.Trace
 
 import Pcb
@@ -16,56 +19,75 @@ import SExpr
 import SExpr.Parse
 import SExpr.Class
 
-template :: SheetPath 'TargetSheet
-template = SheetPath "/chanH/"
+data Clone = Clone { cloneSheet :: SheetPath 'TargetSheet
+                   , cloneOffset :: (Scientific, Scientific)
+                   }
 
-clones :: [(SheetPath 'TargetSheet, (Scientific, Scientific))]
-clones =
-    [ SheetPath "/chanA/" `offsetBy` (22, 30)
-    , SheetPath "/chanB/" `offsetBy` (0,  30)
-    , SheetPath "/chanC/" `offsetBy` (22, 20)
-    , SheetPath "/chanD/" `offsetBy` (0,  20)
-    , SheetPath "/chanE/" `offsetBy` (22, 10)
-    , SheetPath "/chanF/" `offsetBy` (0,  10)
-    , SheetPath "/chanG/" `offsetBy` (22,  0)
-    ]
-  where offsetBy path offset = (path, offset)
+data Unit = Unit { unitTemplate :: SheetPath 'TargetSheet
+                 , clones :: [Clone]
+                 }
+
+data Config = Config { pcbFile :: FilePath
+                     , netlistFile :: FilePath
+                     , units :: [Unit]
+                     }
+
+instance FromJSON (SheetPath t) where
+    parseJSON = withText "sheet path" $ \t -> pure $ SheetPath $ T.unpack t
+
+instance FromJSON Clone where
+    parseJSON = withObject "clone" $ \o ->
+      Clone <$> o .: "sheet"
+            <*> o .: "offset"
+
+instance FromJSON Unit where
+    parseJSON = withObject "unit" $ \o ->
+      Unit <$> o .: "template"
+           <*> o .: "clones"
+
+instance FromJSON Config where
+    parseJSON = withObject "configuration" $ \o ->
+      Config <$> o .: "pcb-file"
+             <*> o .: "netlist-file"
+             <*> o .: "units"
 
 main :: IO ()
 main = do
-    Just netlist <- parseNetlistFromFile "../adc-pmod.net"
-    let sheets = Netlist.sheets netlist
-        Just templateTstampPath = findSheetByName netlist template
-    print templateTstampPath
-    --print $ Netlist.components netlist
-
-    pcb <- either error id <$> parsePcbFromFile "../adc-pmod.kicad_pcb"
-    let modulesByPath :: M.Map (TstampPath 'TargetModule) Module
-        modulesByPath = M.fromList
-            [ (_modulePath m, m)
-            | Module' m <- _pcbNodes pcb
-            ]
-    --mapM_ print $ M.keys modulesByPath
-
-    let Just templateComps = template `M.lookup` componentsBySheet netlist
-        templateMods :: [Module]
-        templateMods = [ mod
-                       | c <- templateComps
-                       , Just mod <- pure $ compTstampPath c `M.lookup` modulesByPath
-                       ]
-    --print templateComps
-
-    let cloneTstamps = map (fromMaybe (error "failed to find") . findSheetByName netlist . fst) clones
-    print cloneTstamps
-    let removeOlds = foldMap removeSheetModules cloneTstamps
-
-        transform :: Endo Pcb
-        transform =
-            foldMap (\(clonePath, (_, offset)) -> addClone netlist templateTstampPath clonePath offset templateMods)
-                    (zip cloneTstamps clones)
-            <> removeOlds
+    config <- either (fail . show) pure =<< Data.Yaml.decodeFileEither "config.yaml"
+    Just netlist <- parseNetlistFromFile $ netlistFile config
+    pcb <- either error id <$> parsePcbFromFile (pcbFile config)
+    let transform = foldMap (applyUnit netlist) (units config)
     writePcbToFile "new.kicad_pcb" $ appEndo transform pcb
-    return ()
+
+applyUnit :: Netlist -> Unit -> Endo Pcb
+applyUnit netlist unit =
+    foldMap doClone (zip cloneTstamps (clones unit))
+    <> removeOlds
+  where
+    Just templateTstampPath = findSheetByName netlist (unitTemplate unit)
+    Just templateComps = unitTemplate unit `M.lookup` componentsBySheet netlist
+    cloneTstamps :: [TstampPath 'TargetSheet]
+    cloneTstamps = map findClone (clones unit)
+      where
+        findClone :: Clone -> TstampPath 'TargetSheet
+        findClone clone = fromMaybe uhOh $ findSheetByName netlist (cloneSheet clone)
+          where uhOh = error $ "failed to find path of sheet " ++ show (cloneSheet clone)
+
+    doClone (clonePath, Clone _ offset) = Endo $ \pcb ->
+        let templateMods :: [Module]
+            templateMods = [ mod
+                           | c <- templateComps
+                           , Just mod <- pure $ compTstampPath c `M.lookup` modulesByPath
+                           ]
+            modulesByPath :: M.Map (TstampPath 'TargetModule) Module
+            modulesByPath = M.fromList
+                [ (_modulePath m, m)
+                | Module' m <- _pcbNodes pcb
+                ]
+        in appEndo (addClone netlist templateTstampPath clonePath offset templateMods) pcb
+
+    removeOlds = foldMap removeSheetModules cloneTstamps
+
 
 findSheetByName :: Netlist -> SheetPath 'TargetSheet -> Maybe (TstampPath 'TargetSheet)
 findSheetByName netlist sheetPath =

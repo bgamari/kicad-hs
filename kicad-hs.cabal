@@ -1,0 +1,32 @@
+name:                kicad-hs
+version:             0.1.0.0
+-- synopsis:            
+-- description:         
+license:             BSD3
+license-file:        LICENSE
+author:              Ben Gamari
+maintainer:          ben@smart-cactus.org
+copyright:           (c) 2018 Ben Gamari
+-- category:            
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable kicad-hs
+  main-is:             Replicate.hs
+  other-modules:       Pcb
+                       Netlist
+                       SExpr
+                       SExpr.Parse
+                       SExpr.Class
+  other-extensions:    RankNTypes, DataKinds, FlexibleContexts, OverloadedStrings, RecordWildCards, TemplateHaskell, GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses, TypeFamilies, MonadFailDesugaring, TypeSynonymInstances, DeriveFunctor
+  build-depends:       base >=4.10 && <4.11,
+                       yaml >=0.8 && <0.9,
+                       lens >=4.16 && <4.17,
+                       scientific >=0.3 && <0.4,
+                       containers >=0.5 && <0.6,
+                       transformers >=0.5 && <0.6,
+                       charset,
+                       trifecta,
+                       prettyprinter,
+                       text
+  default-language:    Haskell2010
