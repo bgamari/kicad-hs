@@ -4,6 +4,7 @@ module SExpr where
 
 import Data.Maybe
 import qualified Data.CharSet as CS
+import qualified Data.CharSet.Unicode as CSU
 import qualified Data.CharSet.Posix.Ascii as CS
 import Data.Scientific
 import Text.Trifecta
@@ -57,7 +58,7 @@ parseSExpr =
     child = TChild <$> parens (many parseSExpr)
 
 unquotedChars :: CS.CharSet
-unquotedChars = CS.alnum <> CS.fromList ".,#_/+-~:%*${}?"
+unquotedChars = CSU.letter <> CSU.number <> CS.fromList ".,#_/+-~:%*${}?&="
 
 stringSExpr :: String -> SExpr
 stringSExpr s = TString quote s
