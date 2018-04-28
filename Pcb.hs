@@ -117,7 +117,7 @@ data Segment = Segment { _segmentStart  :: Point V2 Scientific
                        , _segmentWidth  :: Scientific
                        , _segmentLayer  :: LayerName
                        , _segmentNet    :: NetId
-                       , _segmentTStamp :: TStamp
+                       , _segmentTStamp :: Maybe TStamp
                        , _segmentOthers :: [SExpr]
                        }
              deriving (Show)
@@ -192,8 +192,8 @@ instance ToSExpr Node where
           , withTag "width"  [toSExpr $ _segmentWidth  seg]
           , withTag "layer"  [toSExpr $ _segmentLayer  seg]
           , withTag "net"    [toSExpr $ _segmentNet    seg]
-          , withTag "tstamp" [toSExpr $ _segmentTStamp seg]
           ] ++ _segmentOthers seg
+            ++ maybe [] (\tstamp -> [withTag "tstamp" [toSExpr tstamp]]) (_segmentTStamp seg)
       where P (V2 sx sy) = _segmentStart seg
             P (V2 ex ey) = _segmentEnd seg
 
@@ -244,16 +244,22 @@ parseVia = taggedP "via" $ runParseFields $
         <*> field "net" (expectOne parseNetId)
         <*> remainingFields
 
+-- For testing
+noFail :: SExprP a -> SExprP a
+noFail x = case runSExprP x of
+             Left err -> error err
+             Right x -> return x
+
 parseSegment :: SExpr -> SExprP Segment
-parseSegment = taggedP "segment" $ runParseFields $
-    Segment
+parseSegment = taggedP "segment" $ runParseFields
+    (Segment
       <$> field "start" (n2 (\(x,y) -> P $ V2 x y))
       <*> field "end" (n2 (\(x,y) -> P $ V2 x y))
       <*> field "width" (n1 id)
       <*> field "layer" (expectOne parseLayerName)
       <*> field "net" (expectOne parseNetId)
-      <*> field "tstamp" (expectOne parseTStamp)
-      <*> remainingFields
+      <*> optionalField "tstamp" (expectOne parseTStamp)
+      <*> remainingFields)
 
 parseModule :: SExpr -> SExprP Module
 parseModule = taggedP "module" $ \rest -> do
