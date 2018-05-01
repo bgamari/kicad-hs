@@ -1,10 +1,10 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-module SExpr.Class where
+module Kicad.SExpr.Class where
 
 import Data.Scientific
-import SExpr
+import Kicad.SExpr
 
 class ToSExpr a where
     toSExpr :: a -> SExpr

@@ -2,7 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
 
-module SExpr.Parse
+module Kicad.SExpr.Parse
     ( -- * Parsing expressions
       SExprP
     , runSExprP
@@ -33,7 +33,7 @@ import Control.Applicative
 import Data.Either
 import Prelude hiding (fail)
 
-import SExpr
+import Kicad.SExpr
 
 newtype ParseFieldsM a = PFM ([SExpr] -> SExprP ([SExpr], a))
                     deriving (Functor)

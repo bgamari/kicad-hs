@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module SExpr where
+module Kicad.SExpr where
 
 import Data.Maybe
 import qualified Data.CharSet as CS

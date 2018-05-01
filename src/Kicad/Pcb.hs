@@ -9,7 +9,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Pcb
+module Kicad.Pcb
     ( -- * Basic types
       NetId(..)
     , NetName(..)
@@ -63,9 +63,9 @@ import Numeric
 import Linear
 import Linear.Affine
 
-import SExpr
-import SExpr.Class
-import SExpr.Parse
+import Kicad.SExpr
+import Kicad.SExpr.Class
+import Kicad.SExpr.Parse
 
 -- | What does a path refer to?
 data PathTarget = TargetSheet

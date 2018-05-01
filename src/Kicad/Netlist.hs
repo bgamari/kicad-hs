@@ -3,7 +3,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Netlist where
+module Kicad.Netlist where
 
 import Control.Lens
 import Control.Monad.Trans.Maybe
@@ -11,9 +11,9 @@ import Data.Scientific
 import Text.Trifecta (parseFromFile)
 import Data.Maybe
 
-import SExpr
-import SExpr.Parse
-import Pcb
+import Kicad.SExpr
+import Kicad.SExpr.Parse
+import Kicad.Pcb
 
 data Sheet = Sheet { sheetNum     :: Int
                    , sheetName    :: SheetPath 'TargetSheet

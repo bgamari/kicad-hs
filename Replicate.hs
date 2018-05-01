@@ -17,11 +17,11 @@ import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Debug.Trace
 
-import Pcb
-import Netlist
-import SExpr
-import SExpr.Parse
-import SExpr.Class
+import Kicad.Pcb
+import Kicad.Netlist as Netlist
+import Kicad.SExpr
+import Kicad.SExpr.Parse
+import Kicad.SExpr.Class
 
 data Clone = Clone { cloneSheet :: SheetPath 'TargetSheet
                    , cloneOffset :: V2 Scientific
