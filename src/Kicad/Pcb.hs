@@ -229,6 +229,7 @@ parseNode e =
     , known "page"
     , known "layers"
     , known "setup"
+    , known "title_block"
     ]
   where
     known tag x@(TChild (TString _ ty : _))
