@@ -21,7 +21,6 @@ import Kicad.Pcb
 import Kicad.Netlist as Netlist
 import Kicad.SExpr
 import Kicad.SExpr.Parse
-import Kicad.SExpr.Class
 
 data Box = Box { boxPt1, boxPt2 :: Point V2 Scientific }
 
