@@ -1,0 +1,53 @@
+# kicad-hs
+
+This is a Haskell library for reading and writing Kicad design files (currently
+only `.kicad_pcb` files). It also includes a handy utility for replicating parts
+of a layout.
+
+## Installation
+
+Install a [Haskell](https://www.haskell.org/) toolchain.
+```bash
+$ git clone https://github.com/bgamari/kicad-hs
+$ cd kicad-hs
+$ cabal install 
+```
+
+## Using kicad-replicate
+
+The `kicad-replicate` utility provides a convenient way to reuse a part of a
+layout across multiple sub-schematics of a hierarchical design.
+
+The utility takes a few inputs
+
+ * a [YAML](http://yaml.org/) configuration file (`kicad-replicate.yaml`) which
+   defines the regions to clone
+ * a netlist file (`.net`) used to determine component names
+ * the Kicad PCB design file (`.kicad_pcb`)
+ 
+The configuration file looks something like,
+
+```yaml
+pcb-file: my-design.kicad_pcb
+netlist-file: my-design.net
+units:
+  - template: /top/gated-integ-unit-b/integ2/
+    trace-regions:
+      - [[248, 87.0], [297, 106.5]]
+      - [[248, 107.0], [297, 126.5]]
+    clones:
+      - sheet: /top/gated-integ-unit-b/integ1/
+        offset: [0, -20]
+      - sheet: /top/gated-integ-unit-a/integ1/
+        offset: [0, 41.5]
+      - sheet: /top/gated-integ-unit-a/integ2/
+        offset: [0, 61.5]
+```
+
+This configures `kicad-replicate` to create clones of the components in the
+`/top/gated-integ-unit-b/integ2/` subschematic, changing their reference
+designators to reflect those of the subschematics given in the `clones` section.
+Each clone is translated by the amount given in the `clones.offset` field.
+
+Moreover, the optional `trace-regions` section specifies a region of traces to
+be replicated.

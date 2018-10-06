@@ -84,7 +84,7 @@ offsetBox (Box p1 p2) v = Box (p1 .+^ v) (p2 .+^ v)
 
 main :: IO ()
 main = do
-    config <- either (fail . show) pure =<< Data.Yaml.decodeFileEither "config.yaml"
+    config <- either (fail . show) pure =<< Data.Yaml.decodeFileEither "kicad-replicate.yaml"
     Just netlist <- parseNetlistFromFile $ netlistFile config
     pcb <- either error id <$> parsePcbFromFile (pcbFile config)
     let transform = foldMap (applyUnitComponents netlist) (units config)

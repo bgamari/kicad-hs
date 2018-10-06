@@ -1,6 +1,6 @@
 name:                kicad-hs
 version:             0.1.0.0
--- synopsis:            
+synopsis:            Library for manipulating Kicad design sources.
 -- description:         
 license:             BSD3
 license-file:        LICENSE
@@ -32,7 +32,7 @@ library
   hs-source-dirs:      src                
   default-language:    Haskell2010
 
-executable kicad-hs
+executable kicad-replicate
   main-is:             Replicate.hs
   other-extensions:    RankNTypes, DataKinds, FlexibleContexts, OverloadedStrings, RecordWildCards, TemplateHaskell, GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses, TypeFamilies, MonadFailDesugaring, TypeSynonymInstances, DeriveFunctor
   build-depends:       base,
