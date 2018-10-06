@@ -23,13 +23,15 @@ import Kicad.SExpr
 import Kicad.SExpr.Parse
 import Kicad.SExpr.Class
 
+data Box = Box { boxPt1, boxPt2 :: Point V2 Scientific }
+
 data Clone = Clone { cloneSheet :: SheetPath 'TargetSheet
                    , cloneOffset :: V2 Scientific
                    }
 
 data Unit = Unit { unitTemplate :: SheetPath 'TargetSheet
-                 , traceRegions :: [(Point V2 Scientific, Point V2 Scientific)]
-                 , clones :: [Clone]
+                 , traceRegions :: [Box]
+                 , clones       :: [Clone]
                  }
 
 data Config = Config { pcbFile :: FilePath
@@ -51,6 +53,9 @@ instance FromJSON Clone where
       Clone <$> o .: "sheet"
             <*> o .: "offset"
 
+instance FromJSON Box where
+    parseJSON = fmap (uncurry Box) . parseJSON
+
 instance FromJSON Unit where
     parseJSON = withObject "unit" $ \o ->
       Unit <$> o .: "template"
@@ -63,6 +68,21 @@ instance FromJSON Config where
              <*> o .: "netlist-file"
              <*> o .: "units"
 
+inRegion :: Box -> Point V2 Scientific -> Bool
+inRegion (Box (P (V2 x0 y0)) (P (V2 x1 y1))) (P (V2 x y)) =
+    x >= x0 && x <= x1 && y >= y0 && y <= y1
+
+inAnyRegion :: [Box]
+            -> Point V2 Scientific -> Bool
+inAnyRegion regions p = any (`inRegion` p) regions
+
+segmentInRegion :: Box -> Segment -> Bool
+segmentInRegion box seg =
+    inRegion box (_segmentStart seg) && inRegion box (_segmentEnd seg)
+
+offsetBox :: Box -> V2 Scientific -> Box
+offsetBox (Box p1 p2) v = Box (p1 .+^ v) (p2 .+^ v)
+
 main :: IO ()
 main = do
     config <- either (fail . show) pure =<< Data.Yaml.decodeFileEither "config.yaml"
@@ -70,6 +90,7 @@ main = do
     pcb <- either error id <$> parsePcbFromFile (pcbFile config)
     let transform = foldMap (applyUnitComponents netlist) (units config)
                  <> foldMap applyUnitTraces (units config)
+                 <> foldMap dropUnitTraces (units config)
     writePcbToFile "new.kicad_pcb" $ appEndo transform pcb
 
 applyUnitTraces :: Unit -> Endo Pcb
@@ -99,15 +120,24 @@ applyUnitTraces unit = Endo $ \pcb ->
 
     in Pcb $ _pcbNodes pcb ++ foldMap cloneNodes (clones unit)
   where
-    inRegion (P (V2 x0 y0), P (V2 x1 y1)) (P (V2 x y)) =
-        x >= x0 && x <= x1 && y >= y0 && y <= y1
-
     inTraceRegion :: Point V2 Scientific -> Bool
-    inTraceRegion p = any (`inRegion` p) (traceRegions unit)
+    inTraceRegion = inAnyRegion (traceRegions unit)
 
     segmentInTraceRegion :: Segment -> Bool
-    segmentInTraceRegion seg =
-        inTraceRegion (_segmentStart seg) && inTraceRegion (_segmentEnd seg)
+    segmentInTraceRegion seg = any (`segmentInRegion` seg) (traceRegions unit)
+
+dropUnitTraces :: Unit -> Endo Pcb
+dropUnitTraces unit = foldMap ofClone (clones unit)
+  where
+    ofClone clone = Endo $ pcbNodes %~ filter f
+      where
+        targetTraceRegions :: [Box]
+        targetTraceRegions =
+            fmap (`offsetBox` cloneOffset clone) (traceRegions unit)
+
+        f (Via' via) = not $ inAnyRegion targetTraceRegions (_viaAt via)
+        f (Segment' seg) = not $ any (`segmentInRegion` seg) targetTraceRegions
+        f _ = True
 
 applyUnitComponents :: Netlist -> Unit -> Endo Pcb
 applyUnitComponents netlist unit =
