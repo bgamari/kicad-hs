@@ -18,12 +18,12 @@ library
                        Kicad.SExpr.Parse
                        Kicad.SExpr.Class
                        Kicad.Schematic
-  build-depends:       base >=4.10 && <4.13,
-                       yaml >=0.8 && <0.9,
-                       lens >=4.16 && <4.17,
+  build-depends:       base >=4.15 && <4.20,
+                       yaml >=0.8 && <0.12,
+                       lens >=4.16 && <5.3,
                        scientific >=0.3 && <0.4,
-                       containers >=0.5 && <0.6,
-                       transformers >=0.5 && <0.6,
+                       containers >=0.5 && <0.8,
+                       transformers >=0.5 && <0.7,
                        charset,
                        linear,
                        trifecta,
@@ -34,7 +34,7 @@ library
 
 executable kicad-replicate
   main-is:             Replicate.hs
-  other-extensions:    RankNTypes, DataKinds, FlexibleContexts, OverloadedStrings, RecordWildCards, TemplateHaskell, GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses, TypeFamilies, MonadFailDesugaring, TypeSynonymInstances, DeriveFunctor
+  other-extensions:    RankNTypes, DataKinds, FlexibleContexts, OverloadedStrings, RecordWildCards, TemplateHaskell, GeneralizedNewtypeDeriving, FlexibleInstances, MultiParamTypeClasses, TypeFamilies, TypeSynonymInstances, DeriveFunctor
   build-depends:       base,
                        yaml,
                        lens,
