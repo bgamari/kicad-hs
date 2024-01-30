@@ -17,6 +17,7 @@ library
                        Kicad.SExpr
                        Kicad.SExpr.Parse
                        Kicad.SExpr.Class
+                       Kicad.Symbol
                        Kicad.Schematic
   build-depends:       base >=4.15 && <4.20,
                        yaml >=0.8 && <0.12,
