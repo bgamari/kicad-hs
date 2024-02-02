@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Kicad.SExpr where
 
@@ -11,6 +12,7 @@ import Text.Trifecta
 import Data.Semigroup
 import qualified Data.Text.Prettyprint.Doc as PP
 import Control.Applicative
+import Control.Lens
 import Numeric
 
 data IsQuoted = Quoted | Unquoted
@@ -21,6 +23,7 @@ data SExpr = TString IsQuoted String
            | THexInt Integer
            | TChild [SExpr]
            deriving (Show)
+makePrisms ''SExpr
 
 parseSExpr :: Parser SExpr
 parseSExpr =
